@@ -46,6 +46,7 @@ def GetSettings():
     global status
     global realstatus
     global persistence
+    global norm
     global preset
     global ranges
     global windowtitle
@@ -107,8 +108,14 @@ def ApplySettings():
     for i in range(2):
         rawdata.append(str(ranges[i]))
     rawdata.append(str(num_ladspa_controls))
+    ladspa_controls_avg = 0 #Average of all bands
+    #Normalize against 0dB
+    if(norm == 1):
+        for i in range(num_ladspa_controls):
+            ladspa_controls_avg += float(ladspa_controls[i]) / num_ladspa_controls
     for i in range(num_ladspa_controls):
-        rawdata.append(str(ladspa_controls[i]))
+        rawdata.append(str(round(float(ladspa_controls[i]) - ladspa_controls_avg, 1)))
+                       
     for i in range(num_ladspa_controls):
         rawdata.append(str(ladspa_inputs[i]))
 
@@ -164,6 +171,7 @@ class Equalizer:
         global ladspa_controls
         global preset
         global clearpreset
+        global norm
         newvalue = float(round(widget.get_value(), 1))
         del ladspa_controls[y - 1]
         ladspa_controls.insert(y - 1, newvalue)
@@ -171,7 +179,8 @@ class Equalizer:
             preset = ''
             presetsbox.get_child().set_text(preset)
         for i in range(1, num_ladspa_controls + 1):
-            self.scalevalues[i].set_markup('<small>' + str(float(ladspa_controls[i - 1])) + '\ndB</small>')
+            dbval = float(ladspa_controls[i-1])
+            self.scalevalues[i].set_markup('<small>' + ("+" if dbval > 0 and norm == 1 else "") + str(dbval) + '\ndB</small>')
 
     def on_presetsbox(self, widget, x):
         global preset
@@ -185,6 +194,7 @@ class Equalizer:
         global ladspa_controls
         global ladspa_inputs
         global windowtitle
+        global norm
         preset = presetsbox.get_child().get_text()
 
         presetmatch = ''
@@ -224,8 +234,8 @@ class Equalizer:
                 self.scales[i].set_value(float(ladspa_controls[i - 1]))
                 FormatLabels(i)
                 self.labels[i].set_markup('<small>' + whitespace1 + c + '\n' + whitespace2 + suffix + '</small>')
-                self.scalevalues[i].set_markup('<small>' + str(float(ladspa_controls[i - 1])) + '\ndB</small>')
-
+                dbval = float(ladspa_controls[i-1])
+                self.scalevalues[i].set_markup("<small>" + ("+" if dbval > 0 and norm == 1 else "") + str(dbval) + "\ndB</small>")
             # Set preset again due to interference from scale modifications
             preset = str(rawdata[4])
             clearpreset = 1
@@ -236,6 +246,7 @@ class Equalizer:
         ApplySettings()
 
     def on_resetsettings(self, widget):
+        global norm
         print('Resetting to defaults...')
         os.system('pulseaudio-equalizer interface.resetsettings')
         GetSettings()
@@ -248,7 +259,8 @@ class Equalizer:
             self.scales[i].set_value(float(ladspa_controls[i - 1]))
             FormatLabels(i)
             self.labels[i].set_markup('<small>' + whitespace1 + c + '\n' + whitespace2 + suffix + '</small>')
-            self.scalevalues[i].set_markup('<small>' + str(float(ladspa_controls[i - 1])) + '\ndB</small>')
+            dbval = float(ladspa_controls[i-1])
+            self.scalevalues[i].set_markup("<small>" + ("+" if dbval > 0 and norm == 1 else "") + str(dbval) + "\ndB</small>")
 
     def on_savepreset(self, widget):
         global preset
@@ -312,6 +324,17 @@ class Equalizer:
             persistence = 1
         else:
             persistence = 0
+        ApplySettings()
+
+    def on_normalized(self, widget):
+        global norm
+        if widget.get_active():
+            norm = 1
+        else:
+            norm = 0
+        for i in range(1,num_ladspa_controls+1):
+            dbval = float(ladspa_controls[i-1])
+            self.scalevalues[i].set_markup("<small>" + ("+" if dbval > 0 and norm == 1 else "") + str(dbval) + "\ndB</small>")
         ApplySettings()
 
     def on_removepreset(self, widget):
@@ -529,6 +552,16 @@ class Equalizer:
         keepsettings.connect('clicked', self.on_keepsettings)
         vbox2.pack_start(keepsettings, False, False, 0)
         keepsettings.show()
+
+        global normalized
+        global norm
+        norm = 0
+        normalized = gtk.CheckButton('Normalize')
+        normalized.set_active(norm)
+        #normalized.unset_flags(gtk.CAN_FOCUS)
+        normalized.connect("clicked", self.on_normalized)
+        vbox2.pack_start(normalized, False, False, 0)
+        normalized.show()
 
         applysettings = gtk.Button('Apply Settings')
         vbox2.pack_start(applysettings, False, False, 0)
